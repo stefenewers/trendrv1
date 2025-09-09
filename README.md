@@ -1,6 +1,8 @@
 # Trendr — ETH Price Features & Streamlit Explorer
 Trendr is a lightweight ML project for generating features and training a model on ETH-USD time series, then exploring predictions and signals in a Streamlit app.
 
+<img width="1910" height="965" alt="Screenshot 2025-09-08 at 10 01 55 PM" src="https://github.com/user-attachments/assets/de80d79d-7244-4454-bac2-82134e19191c" />
+
 ## ✨ Key Features
 - Daily ETH-USD feature pipeline (rolling stats, returns, technicals)
 - Reproducible training script that outputs artifacts to artifacts/models/
