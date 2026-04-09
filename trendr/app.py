@@ -78,7 +78,11 @@ def _load_features(symbol: str, interval: str) -> pd.DataFrame | None:
     path = os.path.join(PROJECT_ROOT, "data", "processed", f"features_{symbol}_{interval}.csv")
     if not os.path.exists(path):
         return None
-    return pd.read_csv(path, parse_dates=["date"]).sort_values("date").reset_index(drop=True)
+    df = pd.read_csv(path, parse_dates=["date"]).sort_values("date").reset_index(drop=True)
+    # Downcast floats to float32 to halve memory usage
+    float_cols = df.select_dtypes(include="float64").columns
+    df[float_cols] = df[float_cols].astype("float32")
+    return df
 
 
 @st.cache_resource(show_spinner="Loading model…")
@@ -91,30 +95,42 @@ def _load_model(symbol: str, interval: str):
 
 @st.cache_data(show_spinner="Computing SHAP values…")
 def _shap_importance(_model, X: pd.DataFrame) -> pd.DataFrame:
-    """Cached SHAP computation — underscore prefix tells Streamlit not to hash _model."""
-    return shap_feature_importance(_model, X)
+    """Cached SHAP — sample at most 300 rows to keep memory under control."""
+    X_sample = X.sample(min(300, len(X)), random_state=42)
+    return shap_feature_importance(_model, X_sample)
 
 
 @st.cache_data(show_spinner="Running walk-forward…")
 def _walk_forward_cached(symbol: str, interval: str, tl: float, ts: float, tc: float) -> pd.DataFrame | None:
     df = _load_features(symbol, interval)
-    model = _load_model(symbol, interval)
-    if df is None or model is None:
+    metrics = load_metrics(symbol, interval)
+    if df is None or metrics is None:
         return None
 
     params = StrategyParams(threshold_long=tl, threshold_short=ts, tx_cost_bps=tc)
 
-    # Use the best estimator's model type to re-fit at each fold
-    from trendr.modeling.models import build_pipeline
-    from trendr.modeling.dataset import get_timeseries_cv as _cv
-    model_name = "lgb"  # default; could be inferred from joblib metadata
+    # Re-fit using the best params from training — no GridSearchCV at each fold,
+    # which would multiply memory usage by n_params × n_cv_splits × n_folds.
+    best = metrics.get("best_params", {})
 
     def _fit(X_tr, y_tr):
-        from trendr.modeling.models import fit_with_cv
-        cv = _cv(3)
-        return fit_with_cv(X_tr, y_tr, cv, model_name=model_name)
+        from lightgbm import LGBMClassifier
+        from sklearn.pipeline import Pipeline
+        clf = LGBMClassifier(
+            random_state=42,
+            verbose=-1,
+            n_jobs=1,  # single-threaded inside each fold
+            n_estimators=best.get("clf__n_estimators", 200),
+            learning_rate=best.get("clf__learning_rate", 0.05),
+            max_depth=best.get("clf__max_depth", 4),
+            num_leaves=best.get("clf__num_leaves", 31),
+            reg_lambda=best.get("clf__reg_lambda", 0.1),
+        )
+        pipe = Pipeline([("clf", clf)])
+        pipe.fit(X_tr, y_tr)
+        return pipe
 
-    return walk_forward(df, _fit, params, n_splits=5)
+    return walk_forward(df, _fit, params, n_splits=3)  # 3 folds on free tier
 
 
 # ---------------------------------------------------------------------------
