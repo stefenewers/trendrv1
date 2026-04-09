@@ -1,0 +1,16 @@
+{
+  "acc_train": 0.9172675521821632,
+  "acc_test": 0.5081967213114754,
+  "prec_test": 0.5037037037037037,
+  "recall_test": 0.3756906077348066,
+  "roc_auc_train": 0.9773570602313292,
+  "roc_auc_test": 0.5064058533671794,
+  "best_params": {
+    "clf__learning_rate": 0.05,
+    "clf__max_depth": 4,
+    "clf__n_estimators": 400,
+    "clf__num_leaves": 31,
+    "clf__reg_lambda": 1.0
+  },
+  "model_type": "lgb"
+}
